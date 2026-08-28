@@ -16,4 +16,5 @@ module load pytorch/2.10.0-py3-cu12.6
 
 export PYTHONPATH=/app/apps/pytorch/2.10.0-py3-cu12.6/lib/python3.13/site-packages:$PYTHONPATH
 
-python benchmark_dataset.py
+python benchmark_dataset.py 2>&1 | tee logs/benchmark_dataset_2a.log
+# python benchmark_dataset.py > logs\benchmark_dataset_2a.log 2>&1
