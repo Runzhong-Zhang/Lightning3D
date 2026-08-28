@@ -1,0 +1,55 @@
+{
+  "seed": 42,
+  "experiment_name": "lightning_simvp_nexrad_subset_15_baseline",
+  "output_dir": "outputs",
+  "data": {
+    "backend": "nexrad_3d_netcdf",
+    "train_dir": "data/dataset_subset_15/train",
+    "val_dir": "data/dataset_subset_15/val",
+    "test_dir": "data/dataset_subset_15/test",
+    "lightning_clip_value": 50.0,
+    "radar_scale": 128.0,
+    "target_is_binary": true,
+    "radar_field": "Reflectivity",
+    "vertical_reduction": "max"
+  },
+  "model": {
+    "lag_time": 13,
+    "lead_time": 12,
+    "target_hw": [256, 256],
+    "radar_input_hw": [256, 256],
+    "hid_S": 32,
+    "hid_T": 256,
+    "N_S": 4,
+    "N_T": 4,
+    "spatio_kernel_enc": 3,
+    "spatio_kernel_dec": 3,
+    "dropout": 0.1,
+    "use_spatial_sampling": true,
+    "predict_uncertainty": false,
+    "use_future_condition": false,
+    "future_condition_channels": 2
+  },
+  "radar_condition": {
+    "enabled": false,
+    "predictor": {}
+  },
+  "training": {
+    "batch_size": 8,
+    "num_workers": 4,
+    "epochs": 30,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "min_lr_ratio": 0.05,
+    "gradient_clip_norm": 1.0,
+    "loss_name": "focal",
+    "focal_alpha": 0.75,
+    "focal_gamma": 2.0,
+    "pos_weight": null
+  },
+  "evaluation": {
+    "batch_size": 8,
+    "num_workers": 4,
+    "thresholds": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  }
+}
