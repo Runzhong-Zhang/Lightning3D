@@ -13,6 +13,11 @@ python scripts/eval_lightning_simvp.py --checkpoint outputs/baseline_nexrad/late
 Modification:
 
 ```
+benchmark_dataset.pbs
+Line 3:
+#PBS -P 13004407
+
+
 benchmark_dataset.py
 Line 14:
 CONFIG = "/home/users/ntu/tejasvit/scratch/3D-radar-lightning-nowcasting/configs/baseline_nexrad_subset_15_volume.json"
