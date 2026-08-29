@@ -15,6 +15,10 @@ CONFIG = "configs/baseline_nexrad.json"
 
 
 def main():
+    print(torch.__version__)
+    print(torch.cuda.is_available())
+    print(torch.cuda.get_device_name())
+    print()
     with open(CONFIG, "r") as f:
         config = json.load(f)
 
