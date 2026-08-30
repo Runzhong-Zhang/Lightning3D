@@ -1,0 +1,187 @@
+#!/bin/bash
+#PBS -N simvp_training
+#PBS -P 13014407
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32GB:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -e
+
+cd "$PBS_O_WORKDIR"
+
+mkdir -p logs
+
+LOG_FILE="logs/simvp_${PBS_JOBID}.log"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+
+echo "============================================================"
+echo "                 SimVP NEXRAD TRAINING"
+echo "============================================================"
+echo "Job ID:        $PBS_JOBID"
+echo "Job name:      $PBS_JOBNAME"
+echo "Node:          $(hostname)"
+echo "Start time:    $(date)"
+echo "Working dir:  $PBS_O_WORKDIR"
+echo "Queue:         $PBS_QUEUE"
+echo "============================================================"
+
+cd "$PBS_O_WORKDIR"
+
+echo ""
+echo "============================================================"
+echo "1. LOADING ENVIRONMENT"
+echo "============================================================"
+
+module purge
+
+echo "Loading miniforge..."
+module load miniforge3/25.3.1
+
+#echo "Loading PyTorch..."
+#module load pytorch/2.10.0-py3-cu12.6
+
+echo "Activating conda environment..."
+conda activate /home/users/astar/ares/zhangrz3/scratch/conda_envs/lightning
+
+# export PYTHONPATH=/app/apps/pytorch/2.10.0-py3-cu12.6/lib/python3.13/site-packages:$PYTHONPATH
+
+echo ""
+echo "Loaded modules:"
+module list 2>&1
+
+echo ""
+echo "============================================================"
+echo "2. PYTHON INFORMATION"
+echo "============================================================"
+
+echo "Python executable:"
+which python
+
+echo ""
+echo "Python version:"
+python --version
+
+echo ""
+echo "Conda environment:"
+echo "$CONDA_PREFIX"
+
+echo ""
+echo "Python packages:"
+python -c "
+import sys
+print('Python:', sys.version)
+
+import numpy
+print('NumPy:', numpy.__version__)
+
+import torch
+print('PyTorch:', torch.__version__)
+
+import h5py
+print('h5py:', h5py.__version__)
+
+import xarray
+print('xarray:', xarray.__version__)
+"
+
+echo ""
+echo "============================================================"
+echo "3. CUDA / GPU INFORMATION"
+echo "============================================================"
+
+echo "CUDA_VISIBLE_DEVICES:"
+echo "${CUDA_VISIBLE_DEVICES:-NOT SET}"
+
+echo ""
+echo "nvidia-smi:"
+nvidia-smi
+
+echo ""
+echo "PyTorch CUDA:"
+python -c "
+import torch
+
+print('CUDA available:', torch.cuda.is_available())
+print('CUDA version:', torch.version.cuda)
+print('GPU count:', torch.cuda.device_count())
+
+if torch.cuda.is_available():
+    for i in range(torch.cuda.device_count()):
+        print('GPU', i, ':', torch.cuda.get_device_name(i))
+        print('  Total memory:',
+              round(torch.cuda.get_device_properties(i).total_memory / 1024**3, 2),
+              'GB')
+"
+
+echo ""
+echo "============================================================"
+echo "4. PROJECT INFORMATION"
+echo "============================================================"
+
+echo "Current directory:"
+pwd
+
+echo ""
+echo "Project files:"
+ls -lh
+
+echo ""
+echo "Config file:"
+cat configs/baseline_nexrad.json
+
+echo ""
+echo "============================================================"
+echo "5. DATASET INFORMATION"
+echo "============================================================"
+
+echo "Training directory:"
+ls -ld /data/projects/13004407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021
+
+echo ""
+echo "Number of NetCDF files:"
+find /data/projects/13004407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021 \
+    -name "*.nc" | wc -l
+
+echo ""
+echo "First few NetCDF files:"
+find /data/projects/13004407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021 \
+    -name "*.nc" | head -10
+
+echo ""
+echo "============================================================"
+echo "6. STORAGE INFORMATION"
+echo "============================================================"
+
+df -h /scratch
+
+echo ""
+echo "============================================================"
+echo "7. STARTING TRAINING"
+echo "============================================================"
+
+echo "Training start time: $(date)"
+echo "============================================================"
+
+# unbuffered Python output so logs appear immediately
+python -u scripts/train_lightning_simvp.py \
+    --config configs/baseline_nexrad.json
+
+echo ""
+echo "============================================================"
+echo "8. TRAINING FINISHED"
+echo "============================================================"
+
+echo "Exit status: $?"
+echo "End time:    $(date)"
+
+echo ""
+echo "GPU status after training:"
+nvidia-smi
+
+echo ""
+echo "============================================================"
+echo "JOB COMPLETE"
+echo "============================================================"
