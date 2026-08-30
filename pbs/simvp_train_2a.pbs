@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N simvp_training
+#PBS -N simvp_train_2a
 #PBS -P 13004407
 #PBS -q normal
 #PBS -l select=1:ncpus=8:mem=32GB:ngpus=1

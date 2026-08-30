@@ -1,0 +1,305 @@
+#!/bin/bash
+
+# ============================================================
+# PBS JOB SETTINGS
+# ============================================================
+
+#PBS -N simvp_eval_2a
+#PBS -P 13004407
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32GB:ngpus=1
+#PBS -l walltime=10:00:00
+
+# Join stdout + stderr
+# Change this filename if needed
+#PBS -j oe
+#PBS -o /home/users/astar/ares/zhangrz3/scratch/Lightning3D/logs/simvp_evaluation.log
+
+# ============================================================
+# SAFETY
+# ============================================================
+
+set -u
+
+echo "============================================================"
+echo "                 SimVP NEXRAD EVALUATION"
+echo "============================================================"
+echo "Job ID:        ${PBS_JOBID}"
+echo "Job name:      ${PBS_JOBNAME}"
+echo "Node:          $(hostname)"
+echo "Start time:    $(date)"
+echo "PBS workdir:   ${PBS_O_WORKDIR}"
+echo "PBS queue:     ${PBS_QUEUE}"
+echo "============================================================"
+
+
+# ============================================================
+# 1. MOVE TO PROJECT
+# ============================================================
+
+cd "${PBS_O_WORKDIR}" || {
+    echo "ERROR: Could not cd to PBS_O_WORKDIR"
+    exit 1
+}
+
+echo ""
+echo "Current directory:"
+pwd
+
+
+# ============================================================
+# 2. LOAD CONDA ENVIRONMENT
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "LOADING CONDA ENVIRONMENT"
+echo "============================================================"
+
+module purge
+
+echo "Loading miniforge3/25.3.1..."
+module load miniforge3/25.3.1
+
+echo ""
+echo "Loaded modules:"
+module list 2>&1
+
+echo ""
+echo "Conda:"
+which conda
+conda --version
+
+conda activate /home/users/astar/ares/zhangrz3/scratch/conda_envs/lightning
+# source "$(conda info --base)/etc/profile.d/conda.sh"
+# conda activate /scratch/users/ntu/tejasvit/conda_envs/simvp
+
+echo ""
+echo "CONDA_PREFIX:"
+echo "${CONDA_PREFIX}"
+
+echo ""
+echo "Python:"
+which python
+python --version
+
+
+# ============================================================
+# 3. PYTHON PATH
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "PYTHON PATH"
+echo "============================================================"
+
+echo "PYTHONPATH before cleanup:"
+echo "${PYTHONPATH:-NOT SET}"
+
+unset PYTHONPATH
+
+export PYTHONPATH="${PBS_O_WORKDIR}:${PYTHONPATH:-}"
+
+echo ""
+echo "PYTHONPATH after cleanup:"
+echo "${PYTHONPATH}"
+
+
+# ============================================================
+# 4. PYTORCH / GPU CHECK
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "PYTORCH / GPU INFORMATION"
+echo "============================================================"
+
+python -u - <<'PY'
+import sys
+import torch
+
+print("Python:")
+print(sys.executable)
+print(sys.version)
+
+print("\nPyTorch:")
+print(torch.__version__)
+
+print("\nCUDA available:")
+print(torch.cuda.is_available())
+
+print("\nPyTorch CUDA version:")
+print(torch.version.cuda)
+
+print("\nCUDA device count:")
+print(torch.cuda.device_count())
+
+if torch.cuda.is_available():
+    print("\nGPU:")
+    print(torch.cuda.get_device_name(0))
+
+    props = torch.cuda.get_device_properties(0)
+
+    print(
+        "GPU memory:",
+        round(props.total_memory / 1024**3, 2),
+        "GB"
+    )
+else:
+    raise RuntimeError("CUDA is NOT available. Evaluation requires the GPU.")
+PY
+
+GPU_TEST_STATUS=$?
+
+if [ ${GPU_TEST_STATUS} -ne 0 ]; then
+    echo ""
+    echo "ERROR: GPU/PyTorch test FAILED."
+    exit ${GPU_TEST_STATUS}
+fi
+
+echo ""
+echo "nvidia-smi:"
+nvidia-smi
+
+
+# ============================================================
+# 5. PROJECT CHECK
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "PROJECT CHECK"
+echo "============================================================"
+
+echo "Evaluation script:"
+ls -lh scripts/eval_lightning_simvp.py
+
+echo ""
+echo "Config:"
+ls -lh configs/baseline_nexrad.json
+
+
+# ============================================================
+# 6. CHECKPOINT
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "CHECKPOINT CHECK"
+echo "============================================================"
+
+# IMPORTANT:
+# Change this path to the actual best.pt produced by training.
+
+CHECKPOINT="/home/users/astar/ares/zhangrz3/scratch/Lightning3D/outputs/baseline_nexrad/best.pt"
+echo "Checkpoint:"
+echo "${CHECKPOINT}"
+
+if [ ! -f "${CHECKPOINT}" ]; then
+    echo ""
+    echo "ERROR: Checkpoint not found:"
+    echo "${CHECKPOINT}"
+    echo ""
+    echo "Available .pt files under outputs:"
+    find outputs -type f \( -name "best.pt" -o -name "latest.pt" \) -print
+    exit 1
+fi
+
+echo ""
+echo "Checkpoint found:"
+ls -lh "${CHECKPOINT}"
+
+
+# ============================================================
+# 7. START EVALUATION
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "                 STARTING EVALUATION"
+echo "============================================================"
+
+echo "Evaluation start time:"
+date
+
+echo ""
+echo "Split: test"
+echo "Lead times: 12"
+echo "Thresholds: 0.1 - 0.9"
+
+echo ""
+echo "Command:"
+echo "python -u scripts/eval_lightning_simvp.py \\"
+echo "    --checkpoint ${CHECKPOINT} \\"
+echo "    --split test"
+
+echo ""
+echo "============================================================"
+
+python -u scripts/eval_lightning_simvp.py \
+    --checkpoint "${CHECKPOINT}" \
+    --split test
+
+EVAL_STATUS=$?
+
+
+# ============================================================
+# 8. EVALUATION RESULT
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "                 EVALUATION FINISHED"
+echo "============================================================"
+
+echo "Evaluation exit status: ${EVAL_STATUS}"
+
+echo ""
+echo "End time:"
+date
+
+echo ""
+echo "Final GPU status:"
+nvidia-smi
+
+
+# ============================================================
+# 9. LOOK FOR RESULTS
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "                 EVALUATION OUTPUT"
+echo "============================================================"
+
+echo ""
+echo "Searching for metrics_test.json:"
+find outputs -type f -name "metrics_test.json" -print 2>/dev/null
+
+echo ""
+echo "Searching for evaluation outputs:"
+find outputs -type f \( \
+    -name "metrics_test.json" \
+    -o -name "*csi*" \
+    -o -name "*.csv" \
+\) -print 2>/dev/null
+
+
+# ============================================================
+# 10. JOB RESULT
+# ============================================================
+
+echo ""
+echo "============================================================"
+
+if [ ${EVAL_STATUS} -eq 0 ]; then
+    echo "                 JOB COMPLETE"
+    echo "                 STATUS: SUCCESS"
+else
+    echo "                 JOB FAILED"
+    echo "                 STATUS: ${EVAL_STATUS}"
+fi
+
+echo "============================================================"
+
+exit ${EVAL_STATUS}
