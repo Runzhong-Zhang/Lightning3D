@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -N simvp_training
-#PBS -P 13014407
+#PBS -P 13004407
 #PBS -q normal
 #PBS -l select=1:ncpus=8:mem=32GB:ngpus=1
 #PBS -l walltime=04:00:00
