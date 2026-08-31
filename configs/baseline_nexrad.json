@@ -38,10 +38,10 @@
   },
   "radar_condition": {"enabled": false, "predictor": {}},
   "training": {
-    "batch_size": 8,
+    "batch_size": 4,
     "num_workers": 4,
     "epochs": 50,
-    "learning_rate": 0.0005,
+    "learning_rate": 0.00025,
     "weight_decay": 0.0001,
     "min_lr_ratio": 0.05,
     "gradient_clip_norm": 1.0,
@@ -52,7 +52,7 @@
   },
   "evaluation": {
     "enabled": true,
-    "batch_size": 8,
+    "batch_size": 4,
     "num_workers": 4,
     "thresholds": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
   }
