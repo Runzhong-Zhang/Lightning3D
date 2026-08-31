@@ -684,15 +684,15 @@ class NEXRAD3DNetCDFDataset(Dataset):
             # radar_mask:
             #     (T, Z, H, W)
             #
-            # concatenate along channel dimension:
+            # stack as separate value and mask channels:
             #
-            #     (T, 2*Z, H, W)
+            #     (T, 2, Z, H, W)
             #
             # For Z=29:
             #
-            #     (T, 58, H, W)
+            #     (T, 2, 29, H, W)
 
-            combined = np.concatenate(
+            combined = np.stack(
                 [
                     normalized_radar,
                     radar_mask,

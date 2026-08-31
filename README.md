@@ -7,7 +7,7 @@ python scripts/train_lightning_simvp.py --config configs/baseline_nexrad.json
 Evaluation:
 
 ```bash
-python scripts/eval_lightning_simvp.py --checkpoint outputs/baseline_nexrad/latest.pt --split test
+python scripts/eval_lightning_simvp.py --checkpoint outputs/baseline_nexrad/best.pt --split test
 ```
 
 Modification:

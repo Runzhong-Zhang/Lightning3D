@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from lightning_nowcast.models.vertical_encoder import VerticalEncoder
+
 
 def _shape_str(x: torch.Tensor) -> str:
     return "x".join(str(v) for v in x.shape)
@@ -514,6 +516,8 @@ class LightningSimVPSystem(nn.Module):
         lightning_input_channels: int = 1,
         radar_input_channels: int = 1,
         radar_input_layout: str = "channel_last",
+        radar_vertical_levels: int | None = None,
+        vertical_encoder_layers: int = 3,
         uncertainty_eps: float = 1.0e-4,
         use_lead_time_emb: bool = False,
         use_time_emb: bool = False,
@@ -531,6 +535,7 @@ class LightningSimVPSystem(nn.Module):
         self.lightning_input_channels = int(lightning_input_channels)
         self.radar_input_channels = int(radar_input_channels)
         self.radar_input_layout = str(radar_input_layout).lower()
+        self.radar_vertical_levels = None if radar_vertical_levels is None else int(radar_vertical_levels)
         self.uncertainty_eps = float(uncertainty_eps)
         self.final_output_channels = 2 if self.predict_uncertainty else 1
         self.stem_channels = int(hid_S)
@@ -543,8 +548,20 @@ class LightningSimVPSystem(nn.Module):
             raise ValueError("lightning_input_channels must be >= 1.")
         if self.radar_input_channels < 1:
             raise ValueError("radar_input_channels must be >= 1.")
-        if self.radar_input_layout not in {"channel_last", "channel_first"}:
-            raise ValueError("radar_input_layout must be 'channel_last' or 'channel_first'.")
+        if self.radar_input_layout not in {"channel_last", "channel_first", "channel_first_3d"}:
+            raise ValueError(
+                "radar_input_layout must be 'channel_last', 'channel_first', or 'channel_first_3d'."
+            )
+        if self.radar_input_layout == "channel_first_3d":
+            if self.radar_vertical_levels is None or self.radar_vertical_levels < 1:
+                raise ValueError("channel_first_3d radar inputs require radar_vertical_levels >= 1.")
+            self.vertical_encoder = VerticalEncoder(
+                in_channels=self.radar_input_channels,
+                input_depth=self.radar_vertical_levels,
+                num_layers=int(vertical_encoder_layers),
+            )
+        else:
+            self.vertical_encoder = None
         if self.future_condition_mode not in {"simple", "interval_attention", "latent_predecoder"}:
             raise ValueError(
                 "Unsupported future_condition_mode "
@@ -804,9 +821,10 @@ class LightningSimVPSystem(nn.Module):
             self.output_condition_drop = nn.Identity()
 
     def prepare_inputs(self, radar_past: torch.Tensor, lightning_past: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        if radar_past.ndim != 5:
+        expected_radar_ndim = 6 if self.radar_input_layout == "channel_first_3d" else 5
+        if radar_past.ndim != expected_radar_ndim:
             raise ValueError(
-                "Expected radar_past with shape (B, T, H, W, C), "
+                f"Expected {self.radar_input_layout} radar_past with {expected_radar_ndim} dimensions, "
                 f"got {_shape_str(radar_past)}"
             )
         if lightning_past.ndim != 5:
@@ -818,6 +836,16 @@ class LightningSimVPSystem(nn.Module):
         if self.radar_input_layout == "channel_last":
             batch_size, time_steps, radar_h, radar_w, radar_channels = radar_past.shape
             radar = radar_past.permute(0, 1, 4, 2, 3).contiguous()
+        elif self.radar_input_layout == "channel_first_3d":
+            batch_size, time_steps, radar_channels, radar_depth, radar_h, radar_w = radar_past.shape
+            if radar_depth != self.radar_vertical_levels:
+                raise ValueError(
+                    f"Expected radar vertical levels={self.radar_vertical_levels}, got {radar_depth}"
+                )
+            assert self.vertical_encoder is not None
+            radar = self.vertical_encoder(
+                radar_past.reshape(batch_size * time_steps, radar_channels, radar_depth, radar_h, radar_w)
+            ).reshape(batch_size, time_steps, radar_channels, radar_h, radar_w)
         else:
             batch_size, time_steps, radar_channels, radar_h, radar_w = radar_past.shape
             radar = radar_past.contiguous()
