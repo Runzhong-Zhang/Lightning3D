@@ -277,11 +277,13 @@ class NEXRAD3DNetCDFDatasetSeparateCZ(Dataset):
         )
 
         if self.radar_representation == "volume":
-            # Return as separate tensors: (T, Z, H, W) each
-            # NOT concatenated along channel dimension
+            # Keep the physical field/channel dimension explicit. The
+            # validity mask deliberately has exactly the same layout as the
+            # radar values; the model decides whether/how to use it. With the
+            # current single Reflectivity field this is (T, 1, Z, H, W).
             return (
-                normalized_radar.astype(np.float32),
-                radar_mask.astype(np.float32),
+                normalized_radar[:, None, ...].astype(np.float32),
+                radar_mask[:, None, ...].astype(np.float32),
             )
 
         # COLUMN REPRESENTATION (column_max or column_mean)
@@ -464,8 +466,8 @@ class NEXRAD3DNetCDFDatasetSeparateCZ(Dataset):
         ).float()
 
         return {
-            # Volume representation: (T, Z, H, W)
-            # NOT flattened to (T, C*Z, H, W)
+            # Volume representation: (T, C, Z, H, W). Radar values and
+            # validity mask have the same shape and remain separate here.
             "radar_past": radar_past,
             "radar_past_mask": radar_past_mask,
 
@@ -684,15 +686,15 @@ class NEXRAD3DNetCDFDataset(Dataset):
             # radar_mask:
             #     (T, Z, H, W)
             #
-            # stack as separate value and mask channels:
+            # concatenate along channel dimension:
             #
-            #     (T, 2, Z, H, W)
+            #     (T, 2*Z, H, W)
             #
             # For Z=29:
             #
-            #     (T, 2, 29, H, W)
+            #     (T, 58, H, W)
 
-            combined = np.stack(
+            combined = np.concatenate(
                 [
                     normalized_radar,
                     radar_mask,
@@ -1295,7 +1297,17 @@ def build_dataset(split_name: str, data_config: dict) -> Dataset:
         split_key = f"{split_name}_dir"
         if split_key not in data_config:
             raise KeyError(f"Missing {split_key!r} for nexrad_3d_netcdf backend.")
-        return NEXRAD3DNetCDFDataset(
+        dataset_class = str(data_config.get("dataset_class", "flattened")).lower()
+        dataset_types = {
+            "flattened": NEXRAD3DNetCDFDataset,
+            "separate_cz": NEXRAD3DNetCDFDatasetSeparateCZ,
+        }
+        if dataset_class not in dataset_types:
+            raise ValueError(
+                "Unsupported NEXRAD 3-D dataset_class "
+                f"{dataset_class!r}. Expected 'flattened' or 'separate_cz'."
+            )
+        return dataset_types[dataset_class](
             split_dir=data_config[split_key],
             lightning_clip_value=float(data_config.get("lightning_clip_value", 50.0)),
             radar_scale=float(data_config.get("radar_scale", 128.0)),

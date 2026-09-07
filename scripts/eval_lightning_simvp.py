@@ -1068,6 +1068,7 @@ def main() -> None:
                 outputs = model.predict_distribution(
                     batch["radar_past"],
                     batch["lightning_past"],
+                    radar_past_mask=batch.get("radar_past_mask"),
                     future_condition=future_condition,
                     time_emb=batch.get("time_emb"),
                 )
