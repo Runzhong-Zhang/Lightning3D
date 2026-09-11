@@ -4,8 +4,8 @@
 # PBS JOB SETTINGS
 # ============================================================
 
-#PBS -N simvp_eval_2a
-#PBS -P 13004407
+#PBS -N baseline_2p_eval
+#PBS -P 13014407
 #PBS -q normal
 #PBS -l select=1:ncpus=8:mem=32GB:ngpus=1
 #PBS -l walltime=10:00:00
@@ -71,8 +71,6 @@ which conda
 conda --version
 
 conda activate /home/users/astar/ares/zhangrz3/scratch/conda_envs/lightning
-# source "$(conda info --base)/etc/profile.d/conda.sh"
-# conda activate /scratch/users/ntu/tejasvit/conda_envs/simvp
 
 echo ""
 echo "CONDA_PREFIX:"
@@ -176,7 +174,7 @@ ls -lh scripts/eval_lightning_simvp.py
 
 echo ""
 echo "Config:"
-ls -lh configs/baseline_vertical_mixing.json
+ls -lh configs/baseline_2p.json
 
 
 # ============================================================
@@ -191,7 +189,7 @@ echo "============================================================"
 # IMPORTANT:
 # Change this path to the actual best.pt produced by training.
 
-CHECKPOINT="/home/users/astar/ares/zhangrz3/scratch/Lightning3D/outputs/baseline_vertical_mixing/best.pt"
+CHECKPOINT="/home/users/astar/ares/zhangrz3/scratch/Lightning3D/outputs/baseline_2p/best.pt"
 echo "Checkpoint:"
 echo "${CHECKPOINT}"
 

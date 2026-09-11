@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N baseline_2p
+#PBS -N baseline_2p_train
 #PBS -P 13014407
 #PBS -q normal
 #PBS -l select=1:ncpus=8:mem=32GB:ngpus=1

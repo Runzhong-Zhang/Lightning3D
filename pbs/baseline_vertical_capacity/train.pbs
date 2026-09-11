@@ -1,9 +1,9 @@
 #!/bin/bash
-#PBS -N simvp_training
-#PBS -P 13014407
+#PBS -N baseline_vertical_capacity_train
+#PBS -P 13004407
 #PBS -q normal
 #PBS -l select=1:ncpus=8:mem=32GB:ngpus=1
-#PBS -l walltime=04:00:00
+#PBS -l walltime=120:00:00
 #PBS -j oe
 
 set -e
@@ -12,7 +12,7 @@ cd "$PBS_O_WORKDIR"
 
 mkdir -p logs
 
-LOG_FILE="logs/simvp_${PBS_JOBID}.log"
+LOG_FILE="logs/baseline_vertical_capacity_${PBS_JOBID}.log"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -38,15 +38,10 @@ echo "============================================================"
 module purge
 
 echo "Loading miniforge..."
-module load miniforge3/24.3.0
-
-#echo "Loading PyTorch..."
-#module load pytorch/2.10.0-py3-cu12.6
+module load miniforge3/25.3.1
 
 echo "Activating conda environment..."
-conda activate /scratch/users/ntu/tejasvit/conda_envs/simvp
-
-export PYTHONPATH=/app/apps/pytorch/2.10.0-py3-cu12.6/lib/python3.13/site-packages:$PYTHONPATH
+conda activate /home/users/astar/ares/zhangrz3/scratch/conda_envs/lightning
 
 echo ""
 echo "Loaded modules:"
@@ -130,7 +125,7 @@ ls -lh
 
 echo ""
 echo "Config file:"
-cat configs/baseline_nexrad_subset_15_volume.json
+cat configs/baseline_vertical_capacity.json
 
 echo ""
 echo "============================================================"
@@ -138,16 +133,16 @@ echo "5. DATASET INFORMATION"
 echo "============================================================"
 
 echo "Training directory:"
-ls -ld /data/projects/13014407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021
+ls -ld /data/projects/13004407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021
 
 echo ""
 echo "Number of NetCDF files:"
-find /data/projects/13014407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021 \
+find /data/projects/13004407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021 \
     -name "*.nc" | wc -l
 
 echo ""
 echo "First few NetCDF files:"
-find /data/projects/13014407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021 \
+find /data/projects/13004407/datasets/3D_NEXRAD_GLM/2021/GRIDRAD_GLM_DATASET_2021 \
     -name "*.nc" | head -10
 
 echo ""
@@ -167,7 +162,7 @@ echo "============================================================"
 
 # unbuffered Python output so logs appear immediately
 python -u scripts/train_lightning_simvp.py \
-    --config configs/baseline_nexrad_subset_15_volume.json
+    --config configs/baseline_vertical_capacity.json
 
 echo ""
 echo "============================================================"

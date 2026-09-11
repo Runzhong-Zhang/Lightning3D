@@ -4,7 +4,7 @@
 # PBS JOB SETTINGS
 # ============================================================
 
-#PBS -N simvp_eval_2a
+#PBS -N baseline_nexrad_eval
 #PBS -P 13004407
 #PBS -q normal
 #PBS -l select=1:ncpus=8:mem=32GB:ngpus=1
@@ -71,8 +71,6 @@ which conda
 conda --version
 
 conda activate /home/users/astar/ares/zhangrz3/scratch/conda_envs/lightning
-# source "$(conda info --base)/etc/profile.d/conda.sh"
-# conda activate /scratch/users/ntu/tejasvit/conda_envs/simvp
 
 echo ""
 echo "CONDA_PREFIX:"

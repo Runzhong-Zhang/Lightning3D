@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N simvp_train_2a
+#PBS -N baseline_nexrad_train
 #PBS -P 13004407
 #PBS -q normal
 #PBS -l select=1:ncpus=8:mem=32GB:ngpus=1
@@ -12,7 +12,7 @@ cd "$PBS_O_WORKDIR"
 
 mkdir -p logs
 
-LOG_FILE="logs/baseline_vertical_max_${PBS_JOBID}.log"
+LOG_FILE="logs/simvp_${PBS_JOBID}.log"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -40,13 +40,8 @@ module purge
 echo "Loading miniforge..."
 module load miniforge3/25.3.1
 
-#echo "Loading PyTorch..."
-#module load pytorch/2.10.0-py3-cu12.6
-
 echo "Activating conda environment..."
 conda activate /home/users/astar/ares/zhangrz3/scratch/conda_envs/lightning
-
-# export PYTHONPATH=/app/apps/pytorch/2.10.0-py3-cu12.6/lib/python3.13/site-packages:$PYTHONPATH
 
 echo ""
 echo "Loaded modules:"
@@ -167,7 +162,7 @@ echo "============================================================"
 
 # unbuffered Python output so logs appear immediately
 python -u scripts/train_lightning_simvp.py \
-    --config configs/baseline_vertical_max.json
+    --config configs/baseline_nexrad.json
 
 echo ""
 echo "============================================================"
