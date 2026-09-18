@@ -13,7 +13,6 @@
     "lightning_clip_value": 50.0,
     "radar_scale": 128.0,
     "target_is_binary": true,
-    "dataset_class": "separate_cz",
     "radar_representation": "volume",
     "radar_fields": ["Reflectivity"]
   },
@@ -25,7 +24,7 @@
     "radar_input_channels": 2,
     "radar_input_layout": "channel_first_3d",
     "radar_vertical_levels": 29,
-    "vertical_encoder_layers": 3,
+    "vertical_encoder": "baseline",
     "hid_S": 32,
     "hid_T": 256,
     "N_S": 4,

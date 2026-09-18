@@ -1297,27 +1297,27 @@ def build_dataset(split_name: str, data_config: dict) -> Dataset:
         split_key = f"{split_name}_dir"
         if split_key not in data_config:
             raise KeyError(f"Missing {split_key!r} for nexrad_3d_netcdf backend.")
-        dataset_class = str(data_config.get("dataset_class", "flattened")).lower()
-        dataset_types = {
-            "flattened": NEXRAD3DNetCDFDataset,
-            "separate_cz": NEXRAD3DNetCDFDatasetSeparateCZ,
-        }
-        if dataset_class not in dataset_types:
+        representation = str(data_config.get("radar_representation", "column_max")).lower()
+        if representation not in {"volume", "column_max", "column_mean"}:
             raise ValueError(
-                "Unsupported NEXRAD 3-D dataset_class "
-                f"{dataset_class!r}. Expected 'flattened' or 'separate_cz'."
+                f"Unsupported radar_representation {representation!r}. "
+                "Expected 'volume', 'column_max', or 'column_mean'."
             )
-        return dataset_types[dataset_class](
+        # Volume inputs preserve field and altitude axes for the vertical encoder.
+        dataset_type = (
+            NEXRAD3DNetCDFDatasetSeparateCZ
+            if representation == "volume"
+            else NEXRAD3DNetCDFDataset
+        )
+        return dataset_type(
             split_dir=data_config[split_key],
             lightning_clip_value=float(data_config.get("lightning_clip_value", 50.0)),
             radar_scale=float(data_config.get("radar_scale", 128.0)),
             target_is_binary=bool(data_config.get("target_is_binary", True)),
             radar_field=str(data_config.get("radar_field", "Reflectivity")),
             vertical_reduction=str(data_config.get("vertical_reduction", "max")),
-            radar_representation=str(data_config.get("radar_representation", "column_max")),
+            radar_representation=representation,
             radar_fields=data_config.get("radar_fields"),
-            #radar_validity_mask_field=data_config.get("radar_validity_mask_field"),
-            #radar_validity_minimum=float(data_config.get("radar_validity_minimum", 1.0)),
         )
     if backend == "netcdf":
         split_key = f"{split_name}_dir"

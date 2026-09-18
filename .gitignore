@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+.vscode/
 3D_NEXRAD_GLM/ 
 outputs/ 
 ref/

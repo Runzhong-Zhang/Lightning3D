@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from lightning_nowcast.models.vertical_encoder import VerticalEncoder
+from lightning_nowcast.models.vertical_encoder import build_vertical_encoder
 
 
 def _shape_str(x: torch.Tensor) -> str:
@@ -517,10 +517,7 @@ class LightningSimVPSystem(nn.Module):
         radar_input_channels: int = 1,
         radar_input_layout: str = "channel_last",
         radar_vertical_levels: int | None = None,
-        vertical_encoder_layers: int = 3,
-        vertical_channel_mixing: bool = False,
-        vertical_output_channels: int | None = None,
-        vertical_reduction_mode: str = "learned",
+        vertical_encoder: str | None = None,
         uncertainty_eps: float = 1.0e-4,
         use_lead_time_emb: bool = False,
         use_time_emb: bool = False,
@@ -539,14 +536,6 @@ class LightningSimVPSystem(nn.Module):
         self.radar_input_channels = int(radar_input_channels)
         self.radar_input_layout = str(radar_input_layout).lower()
         self.radar_vertical_levels = None if radar_vertical_levels is None else int(radar_vertical_levels)
-        self.vertical_reduction_mode = str(vertical_reduction_mode).lower()
-        self.vertical_channel_mixing = bool(vertical_channel_mixing)
-        requested_vertical_output_channels = vertical_output_channels
-        self.vertical_output_channels = (
-            self.radar_input_channels
-            if vertical_output_channels is None
-            else int(vertical_output_channels)
-        )
         self.uncertainty_eps = float(uncertainty_eps)
         self.final_output_channels = 2 if self.predict_uncertainty else 1
         self.stem_channels = int(hid_S)
@@ -559,52 +548,22 @@ class LightningSimVPSystem(nn.Module):
             raise ValueError("lightning_input_channels must be >= 1.")
         if self.radar_input_channels < 1:
             raise ValueError("radar_input_channels must be >= 1.")
-        if self.vertical_output_channels < 1:
-            raise ValueError("vertical_output_channels must be >= 1.")
-        if self.vertical_reduction_mode not in {"learned", "max"}:
-            raise ValueError(
-                "vertical_reduction_mode must be 'learned' or 'max', "
-                f"got {vertical_reduction_mode!r}."
-            )
         if self.radar_input_layout not in {"channel_last", "channel_first", "channel_first_3d"}:
-            raise ValueError(
-                "radar_input_layout must be 'channel_last', 'channel_first', or 'channel_first_3d'."
-            )
+            raise ValueError("Unsupported radar_input_layout.")
         if self.radar_input_layout == "channel_first_3d":
             if self.radar_vertical_levels is None or self.radar_vertical_levels < 1:
-                raise ValueError("channel_first_3d radar inputs require radar_vertical_levels >= 1.")
-            if self.vertical_reduction_mode == "learned":
-                self.vertical_encoder = VerticalEncoder(
-                    in_channels=self.radar_input_channels,
-                    input_depth=self.radar_vertical_levels,
-                    num_layers=int(vertical_encoder_layers),
-                    out_channels=self.vertical_output_channels,
-                    channel_mixing=self.vertical_channel_mixing,
-                )
-                self.radar_feature_channels = self.vertical_output_channels
-            else:
-                if self.radar_input_channels != 2:
-                    raise ValueError(
-                        "vertical_reduction_mode='max' requires radar_input_channels=2 "
-                        "for the pooled radar and validity-mask features."
-                    )
-                if self.vertical_channel_mixing:
-                    raise ValueError(
-                        "vertical_channel_mixing applies only when vertical_reduction_mode='learned'."
-                    )
-                if (
-                    requested_vertical_output_channels is not None
-                    and self.vertical_output_channels != self.radar_input_channels
-                ):
-                    raise ValueError(
-                        "vertical_reduction_mode='max' has a fixed two-channel output; "
-                        "vertical_output_channels must be omitted or equal radar_input_channels."
-                    )
-                self.vertical_encoder = None
-                self.radar_feature_channels = self.radar_input_channels
+                raise ValueError("channel_first_3d requires radar_vertical_levels >= 1.")
+            if vertical_encoder is None:
+                raise ValueError("channel_first_3d requires a vertical_encoder name.")
+            self.vertical_encoder = build_vertical_encoder(
+                vertical_encoder,
+                self.radar_input_channels,
+                self.radar_vertical_levels,
+            )
+            self.radar_feature_channels = self.vertical_encoder.output_channels
         else:
-            if self.vertical_reduction_mode != "learned":
-                raise ValueError("vertical_reduction_mode='max' requires radar_input_layout='channel_first_3d'.")
+            if vertical_encoder is not None:
+                raise ValueError("Vertical encoders require channel_first_3d input.")
             self.vertical_encoder = None
             self.radar_feature_channels = self.radar_input_channels
         if self.future_condition_mode not in {"simple", "interval_attention", "latent_predecoder"}:
@@ -865,69 +824,13 @@ class LightningSimVPSystem(nn.Module):
             self.output_head = None
             self.output_condition_drop = nn.Identity()
 
-    def _max_reduce_radar(
-        self,
-        radar_past: torch.Tensor,
-        radar_past_mask: torch.Tensor | None,
-    ) -> torch.Tensor:
-        """Reduce separate 3-D radar/mask tensors to validity-aware columns."""
-        if radar_past_mask is None:
-            raise ValueError("vertical_reduction_mode='max' requires radar_past_mask.")
-        if radar_past.ndim != 6:
-            raise ValueError(
-                "vertical_reduction_mode='max' expects radar_past with shape "
-                f"(B,T,1,Z,H,W), got {_shape_str(radar_past)}."
-            )
-        if radar_past_mask.shape != radar_past.shape:
-            raise ValueError(
-                "radar_past_mask must have the same shape as radar_past in max mode; "
-                f"got radar_past={_shape_str(radar_past)}, "
-                f"radar_past_mask={_shape_str(radar_past_mask)}"
-            )
-        _, _, radar_channels, radar_depth, _, _ = radar_past.shape
-        if radar_channels != 1:
-            raise ValueError(
-                "vertical_reduction_mode='max' expects separate one-channel radar_past, "
-                f"got {radar_channels} channels."
-            )
-        if radar_depth != self.radar_vertical_levels:
-            raise ValueError(
-                f"Expected radar vertical levels={self.radar_vertical_levels}, got {radar_depth}"
-            )
-
-        valid = radar_past_mask.bool()
-        column_valid = valid.any(dim=3)
-        column_radar = radar_past.masked_fill(~valid, float("-inf")).amax(dim=3)
-        column_radar = torch.where(column_valid, column_radar, -1.0)
-        return torch.cat(
-            [column_radar, column_valid.to(column_radar.dtype)], dim=2
-        )
-
     def prepare_inputs(
         self,
         radar_past: torch.Tensor,
         lightning_past: torch.Tensor,
         radar_past_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.vertical_reduction_mode == "max":
-            radar_past = self._max_reduce_radar(radar_past, radar_past_mask)
-        # The SeparateCZ loader keeps observations and their validity mask as
-        # separate tensors, both in (B, T, C, Z, H, W). Join them only at the
-        # model boundary so the learned vertical encoder receives value/mask channels.
-        elif radar_past.ndim == 6 and radar_past_mask is not None:
-            if radar_past_mask.shape != radar_past.shape:
-                raise ValueError(
-                    "radar_past_mask must have the same shape as 3-D radar_past; "
-                    f"got radar_past={_shape_str(radar_past)}, "
-                    f"radar_past_mask={_shape_str(radar_past_mask)}"
-                )
-            radar_past = torch.cat((radar_past, radar_past_mask), dim=2)
-
-        expected_radar_ndim = (
-            5
-            if self.vertical_reduction_mode == "max"
-            else 6 if self.radar_input_layout == "channel_first_3d" else 5
-        )
+        expected_radar_ndim = 6 if self.radar_input_layout == "channel_first_3d" else 5
         if radar_past.ndim != expected_radar_ndim:
             raise ValueError(
                 f"Expected {self.radar_input_layout} radar_past with {expected_radar_ndim} dimensions, "
@@ -942,16 +845,24 @@ class LightningSimVPSystem(nn.Module):
         if self.radar_input_layout == "channel_last":
             batch_size, time_steps, radar_h, radar_w, radar_channels = radar_past.shape
             radar = radar_past.permute(0, 1, 4, 2, 3).contiguous()
-        elif self.radar_input_layout == "channel_first_3d" and self.vertical_reduction_mode == "learned":
+        elif self.radar_input_layout == "channel_first_3d":
             batch_size, time_steps, radar_channels, radar_depth, radar_h, radar_w = radar_past.shape
-            if radar_depth != self.radar_vertical_levels:
-                raise ValueError(
-                    f"Expected radar vertical levels={self.radar_vertical_levels}, got {radar_depth}"
-                )
+            if radar_past_mask is not None:
+                radar_channels += radar_past_mask.shape[2]
             assert self.vertical_encoder is not None
-            radar = self.vertical_encoder(
-                radar_past.reshape(batch_size * time_steps, radar_channels, radar_depth, radar_h, radar_w)
-            ).reshape(batch_size, time_steps, self.radar_feature_channels, radar_h, radar_w)
+            radar = self.vertical_encoder.encode_sequence(radar_past, radar_past_mask)
+            expected_shape = (
+                batch_size,
+                time_steps,
+                self.radar_feature_channels,
+                radar_h,
+                radar_w,
+            )
+            if tuple(radar.shape) != expected_shape:
+                raise ValueError(
+                    "Vertical encoder must return [B,T,output_channels,H,W]; "
+                    f"expected {expected_shape}, got {tuple(radar.shape)}."
+                )
         else:
             batch_size, time_steps, radar_channels, radar_h, radar_w = radar_past.shape
             radar = radar_past.contiguous()
