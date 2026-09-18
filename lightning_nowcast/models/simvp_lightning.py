@@ -850,7 +850,7 @@ class LightningSimVPSystem(nn.Module):
             if radar_past_mask is not None:
                 radar_channels += radar_past_mask.shape[2]
             assert self.vertical_encoder is not None
-            radar = self.vertical_encoder.encode_sequence(radar_past, radar_past_mask)
+            radar = self.vertical_encoder(radar_past, radar_past_mask)
             expected_shape = (
                 batch_size,
                 time_steps,
