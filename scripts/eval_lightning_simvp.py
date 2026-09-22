@@ -982,7 +982,7 @@ def main() -> None:
     )
     thresholds = [float(value) for value in config["evaluation"]["thresholds"]]
     default_threshold = float(config["evaluation"].get("default_threshold", 0.5))
-    pooled_pool_sizes = [int(value) for value in config["evaluation"].get("pooled_pool_sizes", [2, 6, 12])]
+    pooled_pool_sizes = [int(value) for value in config["evaluation"].get("pooled_pool_sizes", [2, 4, 6, 12])]
     pooled_pool_sizes = list(dict.fromkeys(pooled_pool_sizes))
     if 2 not in pooled_pool_sizes:
         pooled_pool_sizes.insert(0, 2)
